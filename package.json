@@ -1,13 +1,45 @@
 {
   "name": "@skvostik/skva",
   "version": "1.0.0",
+  "description": "TypeScript library for the SKVA encrypted backup archive format",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skvostik/skva-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/skvostik/skva-ts/issues"
+  },
+  "homepage": "https://github.com/skvostik/skva-ts#readme",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SKVA_FORMAT.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "skva",
+    "encryption",
+    "backup",
+    "stream",
+    "typescript"
+  ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm test && npm run clean && npm run build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
