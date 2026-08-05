@@ -198,7 +198,7 @@ import {
   skvaGenerateRecipient,
   skvaEncryptBytes,
   skvaDecryptBytes,
-} from "@datova-archa/skva";
+} from "@skvostik/skva";
 
 const password = "correct horse battery staple";
 const recipient = await skvaGenerateRecipient(password, "primary");
@@ -226,7 +226,7 @@ import {
   skvaGenerateRecipient,
   skvaEncryptStream,
   skvaDecryptStream,
-} from "@datova-archa/skva";
+} from "@skvostik/skva";
 
 const password = "correct horse battery staple";
 const recipient = await skvaGenerateRecipient(password, "primary");
@@ -245,7 +245,7 @@ await skvaEncryptStream(input, output, {
 Use this when you only need metadata or recipient information without decrypting the payload:
 
 ```ts
-import { skvaReadHeaderBytes } from "@datova-archa/skva";
+import { skvaReadHeaderBytes } from "@skvostik/skva";
 
 const { json_header } = await skvaReadHeaderBytes(skva_bytes);
 console.log(json_header.recipients.length);
