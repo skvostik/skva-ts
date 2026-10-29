@@ -3,10 +3,15 @@ import {
   SKVA_KDF_NAME,
   SKVA_KEM_NAME,
   SKVA_RECOVERY_NOTE,
+  SKVA_RECOVERY_NOTE_META_ENCRYPTED,
   SKVA_TAG_BYTES,
 } from "../constants.js";
 import { SkvaError, skvaAssert } from "../errors.js";
-import type { SkvaJsonHeader, SkvaRecipientFekWrapper } from "../types.js";
+import type {
+  SkvaJsonHeader,
+  SkvaMetaEncryptedHeader,
+  SkvaRecipientFekWrapper,
+} from "../types.js";
 import { decodeBase64 } from "../utils/base64.js";
 
 /**
@@ -199,6 +204,8 @@ export function validateSkvaJsonHeader(
       "meta must be an object when present.",
     );
   }
+
+  // meta_encrypted is validated only when it is decrypted, so a malformed value never blocks payload decryption.
 }
 
 /**
@@ -208,17 +215,21 @@ export function createSkvaJsonHeader(input: {
   recipients: SkvaRecipientFekWrapper[];
   plaintext_chunk_bytes: number;
   meta?: Record<string, unknown>;
+  meta_encrypted?: SkvaMetaEncryptedHeader;
 }): SkvaJsonHeader {
   const header: SkvaJsonHeader = {
     format: "skva",
     version: 1,
-    recovery_note: SKVA_RECOVERY_NOTE,
+    recovery_note: input.meta_encrypted
+      ? { ...SKVA_RECOVERY_NOTE, ...SKVA_RECOVERY_NOTE_META_ENCRYPTED }
+      : SKVA_RECOVERY_NOTE,
     recipients: input.recipients,
     payload: {
       algorithm: SKVA_CIPHER_NAME,
       plaintext_chunk_bytes: input.plaintext_chunk_bytes,
     },
     ...(input.meta ? { meta: input.meta } : {}),
+    ...(input.meta_encrypted ? { meta_encrypted: input.meta_encrypted } : {}),
   };
 
   validateSkvaJsonHeader(header);
@@ -254,6 +265,6 @@ function getRecord(
   return value;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

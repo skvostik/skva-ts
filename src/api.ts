@@ -4,6 +4,7 @@ import type {
   SkvaEncryptOptions,
   SkvaJsonHeader,
 } from "./types.js";
+import type { SkvaError } from "./errors.js";
 import {
   createBufferingWritable,
   bytesToReadableStream,
@@ -41,7 +42,8 @@ export async function skvaEncryptBytes(
 }
 
 /**
- * Decrypts an in-memory SKVA byte sequence back to plaintext bytes and returns the recovered payload plus the parsed headers.
+ * Decrypts an in-memory SKVA byte sequence back to plaintext bytes and returns the recovered payload plus the parsed headers
+ * and, when present, the decrypted `meta_encrypted` object or `meta_encrypted_error`.
  */
 export async function skvaDecryptBytes(
   skva_bytes: Uint8Array,
@@ -50,14 +52,16 @@ export async function skvaDecryptBytes(
   bytes: Uint8Array;
   json_header: SkvaJsonHeader;
   binary_header: SkvaBinaryHeader;
+  meta_encrypted?: Record<string, unknown>;
+  meta_encrypted_error?: SkvaError;
 }> {
   const { writable, get_bytes } = createBufferingWritable();
-  const { json_header, binary_header } = await skvaDecryptStream(
+  const result = await skvaDecryptStream(
     bytesToReadableStream(skva_bytes),
     writable,
     options,
   );
-  return { bytes: get_bytes(), json_header, binary_header };
+  return { bytes: get_bytes(), ...result };
 }
 
 /**

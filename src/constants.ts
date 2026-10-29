@@ -12,6 +12,10 @@ export const SKVA_CHACHA20POLY1305_MAX_ENCRYPTED_CHUNK_BYTES = SKVA_CHACHA20POLY
 export const SKVA_KDF_NAME = "argon2id";
 export const SKVA_KEM_NAME = "ml_kem1024_p384";
 export const SKVA_CIPHER_NAME = "chacha20poly1305";
+export const SKVA_META_ENCRYPTED_KEY_DERIVATION_NAME = "hkdf_sha256";
+export const SKVA_META_ENCRYPTED_HKDF_INFO = "meta_encrypted";
+export const SKVA_META_ENCRYPTED_KEY_BYTES = 32;
+export const SKVA_META_ENCRYPTED_PADDING_BYTES = 64;
 
 export const SKVA_DEFAULT_KDF_TIME_COST_ITERATIONS = 3;
 export const SKVA_DEFAULT_KDF_MEMORY_COST_KIB = 64 * 1024;
@@ -31,4 +35,11 @@ export const SKVA_RECOVERY_NOTE = {
     "chacha20poly1305(FEK, nonce_i, aad=empty).encrypt(plaintext_chunk)",
   fek_encrypted:
     "chacha20poly1305(kem.shared_secret, fek_nonce, aad=empty).encrypt(FEK)",
+} as const;
+
+export const SKVA_RECOVERY_NOTE_META_ENCRYPTED = {
+  meta_encrypted_key:
+    "hkdf_sha256(ikm=FEK, salt=empty, info=utf8('meta_encrypted'), length=32)",
+  meta_encrypted:
+    "chacha20poly1305(meta_encrypted_key, nonce=zero, aad=empty).encrypt(UTF-8 JSON)",
 } as const;

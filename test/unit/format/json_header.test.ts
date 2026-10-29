@@ -5,6 +5,7 @@ import {
   SKVA_KDF_NAME,
   SKVA_KEM_NAME,
   SKVA_RECOVERY_NOTE,
+  SKVA_RECOVERY_NOTE_META_ENCRYPTED,
 } from "../../../src/constants.js";
 import { SkvaError } from "../../../src/errors.js";
 import {
@@ -138,5 +139,43 @@ describe("format/json_header", () => {
     });
 
     expect("meta" in header).toBe(false);
+    expect("meta_encrypted" in header).toBe(false);
+  });
+
+  it("createSkvaJsonHeader adds meta_encrypted and its recovery note entries", () => {
+    const meta_encrypted = {
+      algorithm: SKVA_CIPHER_NAME,
+      key_derivation: "hkdf_sha256",
+      ciphertext_b64: "AAECAwQFBgcICQoLDA0ODxAREhM=",
+    } as const;
+
+    const header = createSkvaJsonHeader({
+      recipients: [makeRecipient()],
+      plaintext_chunk_bytes: 64,
+      meta_encrypted,
+    });
+
+    expect(header.meta_encrypted).toEqual(meta_encrypted);
+    expect(header.recovery_note).toEqual({
+      ...SKVA_RECOVERY_NOTE,
+      ...SKVA_RECOVERY_NOTE_META_ENCRYPTED,
+    });
+  });
+
+  it("validateSkvaJsonHeader ignores malformed meta_encrypted", () => {
+    const header = { ...makeValidHeader(), meta_encrypted: "not an object" };
+    expect(() => validateSkvaJsonHeader(header)).not.toThrow();
+  });
+
+  it("validateSkvaJsonHeader ignores unrecognized fields", () => {
+    const header = {
+      ...makeValidHeader(),
+      future_field: { anything: true },
+    };
+    header.recipients[0] = {
+      ...header.recipients[0]!,
+      future_recipient_field: 1,
+    } as SkvaRecipientFekWrapper;
+    expect(() => validateSkvaJsonHeader(header)).not.toThrow();
   });
 });

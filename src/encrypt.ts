@@ -5,6 +5,7 @@ import {
 } from "./constants.js";
 import { skvaAssert } from "./errors.js";
 import { encryptPayloadChunksStream } from "./format/chunk.js";
+import { encryptMetaEncrypted } from "./format/meta_encrypted.js";
 import {
   createSkvaJsonHeader,
   serializeSkvaJsonHeader,
@@ -63,10 +64,16 @@ export async function skvaEncryptStream(
     wrapFekForRecipient(recipient_input, fek),
   );
 
+  const meta_encrypted =
+    options.meta_encrypted !== undefined
+      ? encryptMetaEncrypted(options.meta_encrypted, fek)
+      : undefined;
+
   const json_header = createSkvaJsonHeader({
     recipients,
     plaintext_chunk_bytes: plaintext_chunk_bytes,
     meta: options.meta,
+    meta_encrypted,
   });
   const json_header_bytes = serializeSkvaJsonHeader(json_header);
 

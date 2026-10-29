@@ -35,8 +35,15 @@ skvaDecryptStream(
   input: ReadableStream<Uint8Array>,
   output: WritableStream<Uint8Array>,
   options: SkvaDecryptOptions,
-): Promise<{ json_header: SkvaJsonHeader; binary_header: SkvaBinaryHeader }>
+): Promise<{
+  json_header: SkvaJsonHeader;
+  binary_header: SkvaBinaryHeader;
+  meta_encrypted?: Record<string, unknown>;
+  meta_encrypted_error?: SkvaError;
+}>
 ```
+
+When the header contains `meta_encrypted`, the decrypted metadata object is returned as `meta_encrypted`. If it is malformed or fails authentication, `meta_encrypted_error` is returned instead, and the payload is still decrypted.
 
 ### skvaEncryptBytes
 Encrypts an in-memory plaintext buffer and returns the encoded SKVA bytes plus the parsed headers. This is the simplest option for small to medium payloads.
@@ -55,7 +62,13 @@ Decrypts an in-memory SKVA byte buffer and returns the recovered plaintext plus 
 skvaDecryptBytes(
   skva_bytes: Uint8Array,
   options: SkvaDecryptOptions,
-): Promise<{ bytes: Uint8Array; json_header: SkvaJsonHeader; binary_header: SkvaBinaryHeader }>
+): Promise<{
+  bytes: Uint8Array;
+  json_header: SkvaJsonHeader;
+  binary_header: SkvaBinaryHeader;
+  meta_encrypted?: Record<string, unknown>;
+  meta_encrypted_error?: SkvaError;
+}>
 ```
 
 ### skvaReadHeaderStream
@@ -108,11 +121,15 @@ Encryption accepts one or more recipients and writes the wrapped FEK information
 interface SkvaEncryptOptions {
   recipients: SkvaRecipient[];
   meta?: Record<string, unknown>;
+  meta_encrypted?: Record<string, unknown>;
   plaintext_chunk_bytes?: number;
   header_extension_bytes?: Uint8Array;
+  return_fek?: boolean;
   on_progress?: (processedBytes: number) => void;
 }
 ```
+
+`meta` is stored in the header as plaintext. `meta_encrypted` is stored encrypted, so only recipients can read it, which makes it the place for values like the original filename. It is padded to a multiple of 64 bytes to hide its exact length. Anyone who has a recipient's public key can create a file with any `meta_encrypted`, so treat decrypted values such as filenames as untrusted input.
 
 Decryption tries recipients in order until one password match succeeds, or only the selected recipient when `recipient_id` is provided:
 
@@ -165,6 +182,13 @@ interface SkvaJsonHeader {
   recipients: SkvaRecipientFekWrapper[];
   payload: SkvaPayloadHeader;
   meta?: Record<string, unknown>;
+  meta_encrypted?: SkvaMetaEncryptedHeader;
+}
+
+interface SkvaMetaEncryptedHeader {
+  algorithm: "chacha20poly1305";
+  key_derivation: "hkdf_sha256";
+  ciphertext_b64: string;
 }
 ```
 

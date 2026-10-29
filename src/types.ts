@@ -48,6 +48,15 @@ export interface SkvaPayloadHeader {
 }
 
 /**
+ * Encrypted metadata stored in the JSON header, decryptable with a key derived from the FEK.
+ */
+export interface SkvaMetaEncryptedHeader {
+  algorithm: "chacha20poly1305";
+  key_derivation: "hkdf_sha256";
+  ciphertext_b64: string;
+}
+
+/**
  * Parsed SKVA header object as defined by the SKVA format specification.
  */
 export interface SkvaJsonHeader {
@@ -57,6 +66,7 @@ export interface SkvaJsonHeader {
   recipients: SkvaRecipientFekWrapper[];
   payload: SkvaPayloadHeader;
   meta?: Record<string, unknown>;
+  meta_encrypted?: SkvaMetaEncryptedHeader;
 }
 
 /**
@@ -91,6 +101,10 @@ export type SkvaProgressCallback = (processedBytes: number) => void;
 export interface SkvaEncryptOptions {
   recipients: SkvaRecipient[];
   meta?: Record<string, unknown>;
+  /**
+   * Metadata object encrypted into the header's `meta_encrypted` field, readable only by recipients.
+   */
+  meta_encrypted?: Record<string, unknown>;
   plaintext_chunk_bytes?: number;
   header_extension_bytes?: Uint8Array;
   /**

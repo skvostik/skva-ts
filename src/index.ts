@@ -18,6 +18,7 @@ export type {
   SkvaKemHeader,
   SkvaFekHeader,
   SkvaPayloadHeader,
+  SkvaMetaEncryptedHeader,
   SkvaRecipientFekWrapper,
   SkvaJsonHeader,
   SkvaBinaryHeader,
