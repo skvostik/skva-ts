@@ -2,11 +2,17 @@ import {
   SKVA_CIPHER_NAME,
   SKVA_KDF_NAME,
   SKVA_KEM_NAME,
+  SKVA_META_ENCRYPTED_KEY_DERIVATION_NAME,
   SKVA_RECOVERY_NOTE,
+  SKVA_RECOVERY_NOTE_META_ENCRYPTED,
   SKVA_TAG_BYTES,
 } from "../constants.js";
 import { SkvaError, skvaAssert } from "../errors.js";
-import type { SkvaJsonHeader, SkvaRecipientFekWrapper } from "../types.js";
+import type {
+  SkvaJsonHeader,
+  SkvaMetaEncryptedHeader,
+  SkvaRecipientFekWrapper,
+} from "../types.js";
 import { decodeBase64 } from "../utils/base64.js";
 
 /**
@@ -18,9 +24,14 @@ export function serializeSkvaJsonHeader(header: SkvaJsonHeader): Uint8Array {
   return new TextEncoder().encode(json);
 }
 
-export function parseSkvaJsonHeaderBytes(
-  header_bytes: Uint8Array,
-): SkvaJsonHeader {
+/**
+ * Decodes and validates SKVA header bytes. A malformed optional `meta` or `meta_encrypted` is left unset instead of
+ * rejecting the header; the reason `meta_encrypted` was dropped is returned as `meta_encrypted_error`.
+ */
+export function parseSkvaJsonHeaderBytes(header_bytes: Uint8Array): {
+  json_header: SkvaJsonHeader;
+  meta_encrypted_error?: SkvaError;
+} {
   let raw_value: unknown;
   try {
     const json = new TextDecoder("utf-8", { fatal: true }).decode(header_bytes);
@@ -32,12 +43,41 @@ export function parseSkvaJsonHeaderBytes(
     );
   }
 
-  validateSkvaJsonHeader(raw_value);
-  return raw_value as SkvaJsonHeader;
+  const { header, meta_encrypted_error } =
+    dropMalformedOptionalFields(raw_value);
+  validateSkvaJsonHeader(header);
+  return {
+    json_header: header,
+    ...(meta_encrypted_error ? { meta_encrypted_error } : {}),
+  };
+}
+
+// Optional fields are not needed to decrypt the payload, so a malformed one never blocks it.
+function dropMalformedOptionalFields(raw_value: unknown): {
+  header: unknown;
+  meta_encrypted_error?: SkvaError;
+} {
+  if (!isRecord(raw_value)) {
+    return { header: raw_value };
+  }
+
+  const header = { ...raw_value };
+  if (header.meta !== undefined && !isRecord(header.meta)) {
+    delete header.meta;
+  }
+  if (header.meta_encrypted !== undefined) {
+    try {
+      validateMetaEncryptedHeader(header.meta_encrypted);
+    } catch (error) {
+      delete header.meta_encrypted;
+      return { header, meta_encrypted_error: error as SkvaError };
+    }
+  }
+  return { header };
 }
 
 /**
- * Validates the SKVA header schema and semantic constraints.
+ * Validates the SKVA header schema and semantic constraints, including the optional `meta` and `meta_encrypted`.
  */
 export function validateSkvaJsonHeader(
   raw_value: unknown,
@@ -199,6 +239,47 @@ export function validateSkvaJsonHeader(
       "meta must be an object when present.",
     );
   }
+
+  if (raw_value.meta_encrypted !== undefined) {
+    validateMetaEncryptedHeader(raw_value.meta_encrypted);
+  }
+}
+
+/**
+ * Validates the shape of a `meta_encrypted` header object without decrypting it.
+ */
+export function validateMetaEncryptedHeader(
+  value: unknown,
+): asserts value is SkvaMetaEncryptedHeader {
+  skvaAssert(
+    isRecord(value),
+    "ERR_HEADER_SCHEMA_INVALID",
+    "meta_encrypted must be an object.",
+  );
+  skvaAssert(
+    value.algorithm === SKVA_CIPHER_NAME,
+    "ERR_HEADER_SCHEMA_INVALID",
+    "meta_encrypted.algorithm must be 'chacha20poly1305'.",
+  );
+  skvaAssert(
+    value.key_derivation === SKVA_META_ENCRYPTED_KEY_DERIVATION_NAME,
+    "ERR_HEADER_SCHEMA_INVALID",
+    "meta_encrypted.key_derivation must be 'hkdf_sha256'.",
+  );
+  skvaAssert(
+    typeof value.ciphertext_b64 === "string",
+    "ERR_HEADER_SCHEMA_INVALID",
+    "meta_encrypted.ciphertext_b64 must be a string.",
+  );
+  const ciphertext = decodeBase64(
+    value.ciphertext_b64,
+    "meta_encrypted.ciphertext_b64",
+  );
+  skvaAssert(
+    ciphertext.length > SKVA_TAG_BYTES,
+    "ERR_HEADER_SCHEMA_INVALID",
+    "meta_encrypted.ciphertext_b64 must contain ciphertext and tag.",
+  );
 }
 
 /**
@@ -208,17 +289,21 @@ export function createSkvaJsonHeader(input: {
   recipients: SkvaRecipientFekWrapper[];
   plaintext_chunk_bytes: number;
   meta?: Record<string, unknown>;
+  meta_encrypted?: SkvaMetaEncryptedHeader;
 }): SkvaJsonHeader {
   const header: SkvaJsonHeader = {
     format: "skva",
     version: 1,
-    recovery_note: SKVA_RECOVERY_NOTE,
+    recovery_note: input.meta_encrypted
+      ? { ...SKVA_RECOVERY_NOTE, ...SKVA_RECOVERY_NOTE_META_ENCRYPTED }
+      : SKVA_RECOVERY_NOTE,
     recipients: input.recipients,
     payload: {
       algorithm: SKVA_CIPHER_NAME,
       plaintext_chunk_bytes: input.plaintext_chunk_bytes,
     },
     ...(input.meta ? { meta: input.meta } : {}),
+    ...(input.meta_encrypted ? { meta_encrypted: input.meta_encrypted } : {}),
   };
 
   validateSkvaJsonHeader(header);
@@ -254,6 +339,6 @@ function getRecord(
   return value;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
