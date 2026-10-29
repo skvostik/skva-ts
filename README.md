@@ -38,12 +38,13 @@ skvaDecryptStream(
 ): Promise<{
   json_header: SkvaJsonHeader;
   binary_header: SkvaBinaryHeader;
+  meta?: Record<string, unknown>;
   meta_encrypted?: Record<string, unknown>;
   meta_encrypted_error?: SkvaError;
 }>
 ```
 
-When the header contains `meta_encrypted`, the decrypted metadata object is returned as `meta_encrypted`. If it is malformed or fails authentication, `meta_encrypted_error` is returned instead, and the payload is still decrypted.
+When the header contains `meta_encrypted`, the decrypted metadata object is returned as `meta_encrypted`. If it is malformed or fails authentication, `meta_encrypted_error` is returned instead, and the payload is still decrypted. For convenience, plaintext `meta` from the header is returned as `meta` too.
 
 ### skvaEncryptBytes
 Encrypts an in-memory plaintext buffer and returns the encoded SKVA bytes plus the parsed headers. This is the simplest option for small to medium payloads.
@@ -66,6 +67,7 @@ skvaDecryptBytes(
   bytes: Uint8Array;
   json_header: SkvaJsonHeader;
   binary_header: SkvaBinaryHeader;
+  meta?: Record<string, unknown>;
   meta_encrypted?: Record<string, unknown>;
   meta_encrypted_error?: SkvaError;
 }>
@@ -226,6 +228,7 @@ Returned by `skvaOpenDecryptStream`. `decrypt_payload` can be called once. `clos
 interface SkvaDecryptStream {
   json_header: SkvaJsonHeader;
   binary_header: SkvaBinaryHeader;
+  meta?: Record<string, unknown>;
   meta_encrypted?: Record<string, unknown>;
   meta_encrypted_error?: SkvaError;
   decrypt_payload(output: WritableStream<Uint8Array>): Promise<void>;

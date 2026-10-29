@@ -10,7 +10,7 @@ import {
   bytesToReadableStream,
 } from "./stream/adapters.js";
 import { skvaEncryptStream } from "./encrypt.js";
-import { skvaDecryptStream } from "./decrypt.js";
+import { skvaOpenDecryptStream } from "./decrypt.js";
 import { parseSkvaBinaryHeaderStream } from "./format/binary_header.js";
 
 /**
@@ -42,8 +42,35 @@ export async function skvaEncryptBytes(
 }
 
 /**
+ * Decrypts a SKVA stream into plaintext bytes and writes the recovered payload to the provided writable stream.
+ * The function returns the parsed JSON header and binary header from the input stream, and `meta` from the header for convenience.
+ * When the header contains `meta_encrypted`, it also returns the decrypted metadata object, or
+ * `meta_encrypted_error` if it could not be decrypted; the payload is decrypted either way.
+ */
+export async function skvaDecryptStream(
+  input: ReadableStream<Uint8Array>,
+  output: WritableStream<Uint8Array>,
+  options: SkvaDecryptOptions,
+): Promise<{
+  json_header: SkvaJsonHeader;
+  binary_header: SkvaBinaryHeader;
+  meta?: Record<string, unknown>;
+  meta_encrypted?: Record<string, unknown>;
+  meta_encrypted_error?: SkvaError;
+}> {
+  const skva_stream = await skvaOpenDecryptStream(input, options);
+  try {
+    await skva_stream.decrypt_payload(output);
+  } finally {
+    await skva_stream.close();
+  }
+  const { decrypt_payload, close, ...result } = skva_stream;
+  return result;
+}
+
+/**
  * Decrypts an in-memory SKVA byte sequence back to plaintext bytes and returns the recovered payload plus the parsed headers
- * and, when present, the decrypted `meta_encrypted` object or `meta_encrypted_error`.
+ * and, when present, `meta` from the header and the decrypted `meta_encrypted` object or `meta_encrypted_error`.
  */
 export async function skvaDecryptBytes(
   skva_bytes: Uint8Array,
@@ -52,6 +79,7 @@ export async function skvaDecryptBytes(
   bytes: Uint8Array;
   json_header: SkvaJsonHeader;
   binary_header: SkvaBinaryHeader;
+  meta?: Record<string, unknown>;
   meta_encrypted?: Record<string, unknown>;
   meta_encrypted_error?: SkvaError;
 }> {

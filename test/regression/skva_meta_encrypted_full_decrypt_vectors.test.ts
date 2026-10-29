@@ -3,13 +3,15 @@ import { readFileSync } from "node:fs";
 
 import { skvaDecryptBytes, skvaReadHeaderBytes } from "../../src/api.js";
 import { SKVA_RECOVERY_NOTE_META_ENCRYPTED } from "../../src/constants.js";
-import { encodeBase64 } from "../../src/utils/base64.js";
+import { decodeBase64, encodeBase64 } from "../../src/utils/base64.js";
 
 const FIXED_PLAINTEXT_B64 =
   "U0tWQSBtZXRhX2VuY3J5cHRlZCByZWdyZXNzaW9uIHZlY3RvcjogbXVsdGktY2h1bmsgcGF5bG9hZCB3aXRoIGVuY3J5cHRlZCBtZXRhZGF0YS4=";
 const FIXED_SKVA_BYTES = readFileSync(
   new URL("./fixed_meta_encrypted.skva", import.meta.url),
 );
+// FEK of fixed_meta_encrypted.skva, recorded with return_fek when the file was generated.
+const FIXED_FEK_B64 = "N3OP3WO7Jam2GCJwE9hsJ2RP0Rm2Yu10Nsu+qn2sGEo=";
 
 const EXPECTED_META = { created_at: "2026-10-29T00:00:00Z" };
 const EXPECTED_META_ENCRYPTED = {
@@ -61,4 +63,14 @@ describe("regression/skva_meta_encrypted_full_decrypt_vectors", () => {
       expect("meta_encrypted_error" in decrypted).toBe(false);
     });
   }
+
+  it("decrypts fixed SKVA vector and meta_encrypted with the recorded FEK", async () => {
+    const decrypted = await skvaDecryptBytes(FIXED_SKVA_BYTES, {
+      fek: decodeBase64(FIXED_FEK_B64),
+    });
+
+    expect(encodeBase64(decrypted.bytes)).toBe(FIXED_PLAINTEXT_B64);
+    expect(decrypted.meta_encrypted).toEqual(EXPECTED_META_ENCRYPTED);
+    expect("meta_encrypted_error" in decrypted).toBe(false);
+  });
 });

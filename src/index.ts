@@ -1,5 +1,6 @@
 export {
   skvaEncryptBytes,
+  skvaDecryptStream,
   skvaDecryptBytes,
   skvaReadHeaderStream,
   skvaReadHeaderBytes,
@@ -8,7 +9,7 @@ export {
 export { skvaGenerateRecipient, skvaFindRecipient } from "./recipient.js";
 
 export { skvaEncryptStream } from "./encrypt.js";
-export { skvaDecryptStream } from "./decrypt.js";
+export { skvaOpenDecryptStream } from "./decrypt.js";
 
 export { SkvaError } from "./errors.js";
 export type { SkvaErrorCode } from "./errors.js";
@@ -26,4 +27,5 @@ export type {
   SkvaProgressCallback,
   SkvaEncryptOptions,
   SkvaDecryptOptions,
+  SkvaDecryptStream,
 } from "./types.js";

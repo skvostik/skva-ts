@@ -1,3 +1,5 @@
+import type { SkvaError } from "./errors.js";
+
 /**
  * Argon2id KDF parameters carried in the SKVA header and used for deterministic recipient key recovery.
  */
@@ -116,10 +118,46 @@ export interface SkvaEncryptOptions {
 }
 
 /**
- * Input for streaming SKVA decryption.
+ * Input for SKVA decryption: either a recipient password, optionally limited to one `recipient_id`, or the FEK itself.
  */
-export interface SkvaDecryptOptions {
-  password: string;
-  recipient_id?: string;
+export type SkvaDecryptOptions = {
   on_progress?: SkvaProgressCallback;
+} & (
+  | { password: string; recipient_id?: string; fek?: never }
+  | { fek: Uint8Array; password?: never; recipient_id?: never }
+);
+
+/**
+ * An opened SKVA stream whose header is decrypted and whose payload is not read yet.
+ */
+export interface SkvaDecryptStream {
+  /**
+   * Parsed JSON header of the input stream.
+   */
+  json_header: SkvaJsonHeader;
+  /**
+   * Binary header (wire prefix and header extension) of the input stream.
+   */
+  binary_header: SkvaBinaryHeader;
+  /**
+   * Plaintext `meta` from the header, copied here for convenience.
+   */
+  meta?: Record<string, unknown>;
+  /**
+   * Decrypted `meta_encrypted` object, present when the header contains `meta_encrypted` and it decrypted successfully.
+   */
+  meta_encrypted?: Record<string, unknown>;
+  /**
+   * Why `meta_encrypted` could not be decrypted, present instead of `meta_encrypted` when it is malformed or fails
+   * authentication. The payload can still be decrypted.
+   */
+  meta_encrypted_error?: SkvaError;
+  /**
+   * Decrypts the payload into the output stream. Can be called only once, and not after `close`.
+   */
+  decrypt_payload(output: WritableStream<Uint8Array>): Promise<void>;
+  /**
+   * Zeroes the FEK and releases the input stream. Waits for a running `decrypt_payload`. Safe to call more than once.
+   */
+  close(): Promise<void>;
 }

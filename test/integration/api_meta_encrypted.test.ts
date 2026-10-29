@@ -50,7 +50,7 @@ describe("integration/api/meta_encrypted", { timeout: 30_000 }, () => {
     expect(decrypted.meta_encrypted).toEqual({
       original_filename: SECRET_FILENAME,
     });
-    expect(decrypted.json_header.meta).toEqual({
+    expect(decrypted.meta).toEqual({
       created_at: "2026-07-27T12:00:00Z",
     });
     expect("meta_encrypted_error" in decrypted).toBe(false);
@@ -74,6 +74,7 @@ describe("integration/api/meta_encrypted", { timeout: 30_000 }, () => {
     expect(encrypted.json_header.recovery_note).not.toHaveProperty(
       "meta_encrypted",
     );
+    expect("meta" in decrypted).toBe(false);
     expect("meta_encrypted" in decrypted).toBe(false);
     expect("meta_encrypted_error" in decrypted).toBe(false);
   }, RECIPIENT_TEST_TIMEOUT_MS);
