@@ -23,13 +23,20 @@ import { wrapFekForRecipient } from "./recipient.js";
 
 /**
  * Encrypts a plaintext stream into SKVA wire format and writes the result to the provided writable stream.
- * The function returns the parsed JSON header and binary header that were emitted with the payload.
+ * The function returns the parsed JSON header and binary header that were emitted with the payload,
+ * When `options.return_fek` is true, it also returns a copy of the generated FEK so callers can wrap it in their
+ * own envelope (e.g. for key escrow). The returned FEK grants full access to the payload; callers should zero it
+ * with `fek.fill(0)` when done.
  */
 export async function skvaEncryptStream(
   input: ReadableStream<Uint8Array>,
   output: WritableStream<Uint8Array>,
   options: SkvaEncryptOptions,
-): Promise<{ json_header: SkvaJsonHeader; binary_header: SkvaBinaryHeader }> {
+): Promise<{
+  json_header: SkvaJsonHeader;
+  binary_header: SkvaBinaryHeader;
+  fek?: Uint8Array;
+}> {
   const plaintext_chunk_bytes =
     options.plaintext_chunk_bytes ?? SKVA_DEFAULT_PLAINTEXT_CHUNK_SIZE_BYTES;
   const header_extension_bytes =
@@ -83,7 +90,12 @@ export async function skvaEncryptStream(
     );
 
     await writer.close();
-    return { json_header, binary_header };
+    // Return a copy because the original FEK is zeroed in the finally block.
+    return {
+      json_header,
+      binary_header,
+      ...(options.return_fek ? { fek: fek.slice() } : {}),
+    };
   } finally {
     fek.fill(0); // Clear FEK from memory
     reader.releaseLock();

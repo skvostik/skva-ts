@@ -93,6 +93,11 @@ export interface SkvaEncryptOptions {
   meta?: Record<string, unknown>;
   plaintext_chunk_bytes?: number;
   header_extension_bytes?: Uint8Array;
+  /**
+   * When true, the encrypt result includes a copy of the generated FEK that the caller must zero after use.
+   * Defaults to false.
+   */
+  return_fek?: boolean;
   on_progress?: SkvaProgressCallback;
 }
 

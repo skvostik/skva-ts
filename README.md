@@ -22,8 +22,10 @@ skvaEncryptStream(
   input: ReadableStream<Uint8Array>,
   output: WritableStream<Uint8Array>,
   options: SkvaEncryptOptions,
-): Promise<{ json_header: SkvaJsonHeader; binary_header: SkvaBinaryHeader }>
+): Promise<{ json_header: SkvaJsonHeader; binary_header: SkvaBinaryHeader; fek?: Uint8Array }>
 ```
+
+`fek` is returned only when you set `return_fek: true` in the options; by default the key is zeroed and never leaves the function. It is a copy of the randomly generated 32-byte file encryption key. Use it if you need to wrap the key in your own envelope, for example to store it in a database. It decrypts the payload on its own without any password, so treat it as a secret and zero it (`fek.fill(0)`) when you are done.
 
 ### skvaDecryptStream
 Decrypts a SKVA stream and writes the recovered plaintext to an output stream. This is the stream-based counterpart to byte decryption.
@@ -43,7 +45,7 @@ Encrypts an in-memory plaintext buffer and returns the encoded SKVA bytes plus t
 skvaEncryptBytes(
   plaintext: Uint8Array,
   options: SkvaEncryptOptions,
-): Promise<{ bytes: Uint8Array; json_header: SkvaJsonHeader; binary_header: SkvaBinaryHeader }>
+): Promise<{ bytes: Uint8Array; json_header: SkvaJsonHeader; binary_header: SkvaBinaryHeader; fek?: Uint8Array }>
 ```
 
 ### skvaDecryptBytes
