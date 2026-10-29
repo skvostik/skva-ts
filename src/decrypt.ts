@@ -81,9 +81,12 @@ export async function skvaOpenDecryptStream(
       return payload_promise;
     },
     async close() {
-      await payload_promise?.catch(() => {
-        // The caller of decrypt_payload receives this error.
-      });
+      // Without a running payload, release synchronously, so a decrypt_payload call right after close is rejected.
+      if (payload_promise !== undefined) {
+        await payload_promise.catch(() => {
+          // The caller of decrypt_payload receives this error.
+        });
+      }
       release();
     },
   };
@@ -117,8 +120,8 @@ async function resolveFek(
     "ERR_INVALID_ARGUMENT",
     `fek must be a ${SKVA_FEK_BYTES}-byte Uint8Array.`,
   );
-  // Copy, so zeroing the FEK after decryption never touches the caller's key.
-  return options.fek.slice();
+  // Copy, so zeroing the FEK after decryption never touches the caller's key. Buffer.slice would return a view.
+  return new Uint8Array(options.fek);
 }
 
 // meta_encrypted is optional, so a failure to decrypt it is reported instead of stopping payload decryption.

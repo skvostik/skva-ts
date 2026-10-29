@@ -182,6 +182,9 @@ describe("format/meta_encrypted", () => {
     ["null", null, "must be an object"],
     ["an array", [], "must be an object"],
     ["a non-serializable value", { size: 1n }, "must be JSON-serializable"],
+    ["toJSON returning an array", { toJSON: () => [] }, "must serialize to a JSON object"],
+    ["toJSON returning undefined", { toJSON: () => undefined }, "must serialize to a JSON object"],
+    ["a Date", new Date(0), "must serialize to a JSON object"],
   ])("encrypt rejects %s with ERR_INVALID_ARGUMENT", (_label, value, message_part) => {
     expectSkvaError(
       () => encryptMetaEncrypted(value as Record<string, unknown>, FEK),

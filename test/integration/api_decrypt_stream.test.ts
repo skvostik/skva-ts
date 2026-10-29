@@ -141,6 +141,18 @@ describe("integration/api/decrypt_stream", { timeout: 30_000 }, () => {
     expect(fek).toEqual(fek_before);
   });
 
+  it("leaves a FEK passed as a Node.js Buffer intact", async () => {
+    // Buffer.slice returns a view, so a copy made with it would zero the caller's key.
+    const fek_buffer = Buffer.from(fek);
+
+    const first = await skvaDecryptBytes(skva_bytes, { fek: fek_buffer });
+    const second = await skvaDecryptBytes(skva_bytes, { fek: fek_buffer });
+
+    expect(first.bytes).toEqual(FIXED_PLAINTEXT);
+    expect(second.bytes).toEqual(FIXED_PLAINTEXT);
+    expect(new Uint8Array(fek_buffer)).toEqual(fek);
+  });
+
   it("detects a wrong FEK in meta_encrypted and on the first payload chunk", async () => {
     const skva_stream = await skvaOpenDecryptStream(
       bytesToReadableStream(skva_bytes),
@@ -212,6 +224,18 @@ describe("integration/api/decrypt_stream", { timeout: 30_000 }, () => {
       closed.decrypt_payload(createBufferingWritable().writable),
       "ERR_INVALID_ARGUMENT",
     );
+
+    // close without await must already reject a decrypt_payload that follows it.
+    const closing = await skvaOpenDecryptStream(
+      bytesToReadableStream(skva_bytes),
+      { password: PASSWORD },
+    );
+    const close_promise = closing.close();
+    await expectSkvaError(
+      closing.decrypt_payload(createBufferingWritable().writable),
+      "ERR_INVALID_ARGUMENT",
+    );
+    await close_promise;
   });
 
   it("close releases an unread input and can be called twice", async () => {

@@ -41,6 +41,12 @@ export function encryptMetaEncrypted(
       { cause: error },
     );
   }
+  // toJSON can turn an object into any JSON value, or into no JSON at all, so check what the decoder will see.
+  skvaAssert(
+    typeof json === "string" && isRecord(JSON.parse(json)),
+    "ERR_INVALID_ARGUMENT",
+    "meta_encrypted must serialize to a JSON object.",
+  );
 
   const plaintext = padWithSpaces(new TextEncoder().encode(json));
   const key = deriveMetaEncryptedKey(fek);
