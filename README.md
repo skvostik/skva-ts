@@ -89,6 +89,16 @@ skvaReadHeaderBytes(
 ): Promise<{ json_header: SkvaJsonHeader; binary_header: SkvaBinaryHeader }>
 ```
 
+### skvaOpenDecryptStream
+Reads the header, unlocks it and decrypts `meta_encrypted`, without touching the payload. Use it when you need the metadata, such as the original filename, before choosing the output. Throws on a wrong password or an invalid header.
+
+```ts
+skvaOpenDecryptStream(
+  input: ReadableStream<Uint8Array>,
+  options: SkvaDecryptOptions,
+): Promise<SkvaDecryptStream>
+```
+
 ### skvaGenerateRecipient
 Creates a recipient descriptor from a password and an optional recipient ID. The returned value can be passed directly into encryption options.
 Each call generates a fresh random KDF salt, so generated recipient material is intentionally different across calls.
@@ -111,7 +121,7 @@ skvaFindRecipient(
 ): Promise<string | null>
 ```
 
-The most commonly used exported types are `SkvaKdfHeader`, `SkvaRecipient`, `SkvaJsonHeader`, `SkvaBinaryHeader`, `SkvaEncryptOptions`, `SkvaDecryptOptions`, and `SkvaError`.
+The most commonly used exported types are `SkvaKdfHeader`, `SkvaRecipient`, `SkvaJsonHeader`, `SkvaBinaryHeader`, `SkvaEncryptOptions`, `SkvaDecryptOptions`, `SkvaDecryptStream`, and `SkvaError`.
 
 ## Core options
 
@@ -131,14 +141,15 @@ interface SkvaEncryptOptions {
 
 `meta` is stored in the header as plaintext. `meta_encrypted` is stored encrypted, so only recipients can read it, which makes it the place for values like the original filename. It is padded to a multiple of 64 bytes to hide its exact length. Anyone who has a recipient's public key can create a file with any `meta_encrypted`, so treat decrypted values such as filenames as untrusted input.
 
-Decryption tries recipients in order until one password match succeeds, or only the selected recipient when `recipient_id` is provided:
+Decryption takes either `password` or `fek`. With a password, recipients are tried in order until one matches, or only the selected recipient when `recipient_id` is provided. With `fek`, for example one returned by `return_fek`, no password is needed:
 
 ```ts
-interface SkvaDecryptOptions {
-  password: string;
-  recipient_id?: string;
+type SkvaDecryptOptions = {
   on_progress?: (processedBytes: number) => void;
-}
+} & (
+  | { password: string; recipient_id?: string; fek?: never }
+  | { fek: Uint8Array; password?: never; recipient_id?: never }
+);
 ```
 
 ## Key types
@@ -204,6 +215,21 @@ interface SkvaBinaryHeader {
   header_bytes: Uint8Array;
   header_extension_length: number;
   header_extension_bytes: Uint8Array;
+}
+```
+
+### SkvaDecryptStream
+
+Returned by `skvaOpenDecryptStream`. `decrypt_payload` can be called once. `close` zeroes the FEK and releases the input; always call it.
+
+```ts
+interface SkvaDecryptStream {
+  json_header: SkvaJsonHeader;
+  binary_header: SkvaBinaryHeader;
+  meta_encrypted?: Record<string, unknown>;
+  meta_encrypted_error?: SkvaError;
+  decrypt_payload(output: WritableStream<Uint8Array>): Promise<void>;
+  close(): Promise<void>;
 }
 ```
 
@@ -276,4 +302,21 @@ import { skvaReadHeaderBytes } from "@skvostik/skva";
 const { json_header } = await skvaReadHeaderBytes(skva_bytes);
 console.log(json_header.recipients.length);
 console.log(json_header.payload.plaintext_chunk_bytes);
+```
+
+## Decrypt the header first, then the payload
+
+```ts
+import { skvaOpenDecryptStream } from "@skvostik/skva";
+
+// reads header and verifies password, throws on invalid password or parse error
+const skva_stream = await skvaOpenDecryptStream(input, { password });
+
+try {
+  const sanitized_filename = sanitize_filename(skva_stream.meta_encrypted?.original_filename);
+  const output = Writable.toWeb(createWriteStream(sanitized_filename)) as WritableStream<Uint8Array>;
+  await skva_stream.decrypt_payload(output);
+} finally {
+  await skva_stream.close();
+}
 ```
