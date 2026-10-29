@@ -1,8 +1,11 @@
+import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { describe, expect, it } from "vitest";
 
 import {
   SKVA_DEFAULT_PLAINTEXT_CHUNK_SIZE_BYTES,
+  SKVA_FEK_BYTES,
   SKVA_HEADER_PREFIX_BYTES,
+  SKVA_NONCE_BYTES,
 } from "../../src/constants.js";
 import { skvaDecryptBytes, skvaEncryptBytes } from "../../src/api.js";
 import { skvaGenerateRecipient } from "../../src/recipient.js";
@@ -109,5 +112,49 @@ describe("integration/api/roundtrip", { timeout: 30_000 }, () => {
       new Uint8Array([1, 2, 3, 4]),
     );
     expect(decrypted.json_header).toEqual(encrypted.json_header);
+  }, RECIPIENT_TEST_TIMEOUT_MS);
+
+  it("skvaEncryptBytes does not return the FEK by default", async () => {
+    const recipient = await skvaGenerateRecipient(
+      "api-pass-no-fek",
+      "api-r-no-fek",
+      CHEAP_KDF,
+    );
+
+    const encrypted = await skvaEncryptBytes(FIXED_PLAINTEXT, {
+      recipients: [recipient],
+    });
+
+    expect(encrypted).not.toHaveProperty("fek");
+  }, RECIPIENT_TEST_TIMEOUT_MS);
+
+  it("skvaEncryptBytes returns the FEK that decrypts the payload when return_fek is set", async () => {
+    const recipient = await skvaGenerateRecipient(
+      "api-pass-fek",
+      "api-r-fek",
+      CHEAP_KDF,
+    );
+
+    const encrypted = await skvaEncryptBytes(FIXED_PLAINTEXT, {
+      recipients: [recipient],
+      return_fek: true,
+    });
+
+    const fek = encrypted.fek!;
+    expect(fek).toHaveLength(SKVA_FEK_BYTES);
+    expect(fek.some((byte) => byte !== 0)).toBe(true);
+
+    const payload_offset =
+      SKVA_HEADER_PREFIX_BYTES +
+      encrypted.binary_header.header_length +
+      4 +
+      encrypted.binary_header.header_extension_length;
+    const final_chunk_nonce = new Uint8Array(SKVA_NONCE_BYTES);
+    final_chunk_nonce[SKVA_NONCE_BYTES - 1] = 0x01;
+
+    const plaintext = chacha20poly1305(fek, final_chunk_nonce).decrypt(
+      encrypted.bytes.subarray(payload_offset),
+    );
+    expect(plaintext).toEqual(FIXED_PLAINTEXT);
   }, RECIPIENT_TEST_TIMEOUT_MS);
 });

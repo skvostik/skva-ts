@@ -13,7 +13,8 @@ import { skvaDecryptStream } from "./decrypt.js";
 import { parseSkvaBinaryHeaderStream } from "./format/binary_header.js";
 
 /**
- * Encrypts plaintext bytes into a complete SKVA byte sequence and returns the serialized bytes plus the parsed headers.
+ * Encrypts plaintext bytes into a complete SKVA byte sequence and returns the serialized bytes plus the parsed headers
+ * and, when `options.return_fek` is true, a copy of the generated FEK.
  */
 export async function skvaEncryptBytes(
   plaintext: Uint8Array,
@@ -22,15 +23,21 @@ export async function skvaEncryptBytes(
   bytes: Uint8Array;
   json_header: SkvaJsonHeader;
   binary_header: SkvaBinaryHeader;
+  fek?: Uint8Array;
 }> {
   const { writable, get_bytes } = createBufferingWritable();
-  const { json_header, binary_header } = await skvaEncryptStream(
+  const { json_header, binary_header, fek } = await skvaEncryptStream(
     bytesToReadableStream(plaintext),
     writable,
     options,
   );
 
-  return { bytes: get_bytes(), json_header, binary_header };
+  return {
+    bytes: get_bytes(),
+    json_header,
+    binary_header,
+    ...(fek ? { fek } : {}),
+  };
 }
 
 /**
