@@ -1,6 +1,6 @@
 {
   "name": "@skvostik/skva",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "TypeScript library for the SKVA encrypted backup archive format",
   "license": "MIT",
   "repository": {
