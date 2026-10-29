@@ -62,7 +62,7 @@ describe("format/json_header", () => {
     const bytes = serializeSkvaJsonHeader(header);
     const parsed = parseSkvaJsonHeaderBytes(bytes);
 
-    expect(parsed).toEqual(header);
+    expect(parsed).toEqual({ json_header: header });
   });
 
   it("parseSkvaJsonHeaderBytes throws ERR_HEADER_JSON_INVALID for malformed bytes", () => {
@@ -75,6 +75,18 @@ describe("format/json_header", () => {
       expect(error).toBeInstanceOf(SkvaError);
       const skva_error = error as SkvaError;
       expect(skva_error.code).toBe("ERR_HEADER_JSON_INVALID");
+    }
+  });
+
+  it("parseSkvaJsonHeaderBytes throws ERR_HEADER_SCHEMA_INVALID when the JSON is not an object", () => {
+    try {
+      parseSkvaJsonHeaderBytes(new TextEncoder().encode("[1]"));
+      throw new Error("Expected parseSkvaJsonHeaderBytes to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(SkvaError);
+      const skva_error = error as SkvaError;
+      expect(skva_error.code).toBe("ERR_HEADER_SCHEMA_INVALID");
+      expect(skva_error.message).toContain("Header must be a JSON object");
     }
   });
 
@@ -162,9 +174,53 @@ describe("format/json_header", () => {
     });
   });
 
-  it("validateSkvaJsonHeader ignores malformed meta_encrypted", () => {
-    const header = { ...makeValidHeader(), meta_encrypted: "not an object" };
-    expect(() => validateSkvaJsonHeader(header)).not.toThrow();
+  it.each([
+    ["meta", { meta: "not an object" }, "meta must be an object"],
+    ["meta_encrypted", { meta_encrypted: "not an object" }, "meta_encrypted must be an object"],
+  ])("validateSkvaJsonHeader rejects malformed %s", (_label, fields, message_part) => {
+    const header = { ...makeValidHeader(), ...fields };
+
+    try {
+      validateSkvaJsonHeader(header);
+      throw new Error("Expected validateSkvaJsonHeader to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(SkvaError);
+      const skva_error = error as SkvaError;
+      expect(skva_error.code).toBe("ERR_HEADER_SCHEMA_INVALID");
+      expect(skva_error.message).toContain(message_part);
+    }
+  });
+
+  it("parseSkvaJsonHeaderBytes leaves malformed meta and meta_encrypted unset", () => {
+    const header = {
+      ...makeValidHeader(),
+      meta: ["not", "an", "object"],
+      meta_encrypted: { algorithm: "chacha20poly1305" },
+    };
+
+    const parsed = parseSkvaJsonHeaderBytes(
+      new TextEncoder().encode(JSON.stringify(header)),
+    );
+
+    expect("meta" in parsed.json_header).toBe(false);
+    expect("meta_encrypted" in parsed.json_header).toBe(false);
+    expect(parsed.json_header.recipients).toEqual(header.recipients);
+    expect(parsed.meta_encrypted_error).toBeInstanceOf(SkvaError);
+    expect(parsed.meta_encrypted_error!.code).toBe("ERR_HEADER_SCHEMA_INVALID");
+    expect(parsed.meta_encrypted_error!.message).toContain("key_derivation");
+  });
+
+  it("parseSkvaJsonHeaderBytes keeps a well-formed meta_encrypted", () => {
+    const meta_encrypted = {
+      algorithm: SKVA_CIPHER_NAME,
+      key_derivation: "hkdf_sha256",
+      ciphertext_b64: "AAECAwQFBgcICQoLDA0ODxAREhM=",
+    } as const;
+    const header = { ...makeValidHeader(), meta_encrypted };
+
+    const parsed = parseSkvaJsonHeaderBytes(serializeSkvaJsonHeader(header));
+
+    expect(parsed).toEqual({ json_header: header });
   });
 
   it("validateSkvaJsonHeader ignores unrecognized fields", () => {

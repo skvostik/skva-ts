@@ -18,6 +18,7 @@ export async function parseSkvaBinaryHeaderStream(
   json_header: SkvaJsonHeader;
   binary_header: SkvaBinaryHeader;
   reader: ReturnType<typeof createByteReader>;
+  meta_encrypted_error?: SkvaError;
 }> {
   const reader = createByteReader(stream.getReader());
   const prefix = await reader.readBytesExact(
@@ -57,7 +58,8 @@ export async function parseSkvaBinaryHeaderStream(
     "SKVA header_extension bytes",
   );
 
-  const json_header = parseSkvaJsonHeaderBytes(header_bytes);
+  const { json_header, meta_encrypted_error } =
+    parseSkvaJsonHeaderBytes(header_bytes);
   const binary_header: SkvaBinaryHeader = {
     magic: SKVA_MAGIC,
     version,
@@ -71,6 +73,7 @@ export async function parseSkvaBinaryHeaderStream(
     json_header,
     binary_header,
     reader,
+    ...(meta_encrypted_error ? { meta_encrypted_error } : {}),
   };
 }
 

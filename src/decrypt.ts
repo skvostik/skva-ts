@@ -20,7 +20,7 @@ export async function skvaOpenDecryptStream(
   input: ReadableStream<Uint8Array>,
   options: SkvaDecryptOptions,
 ): Promise<SkvaDecryptStream> {
-  const { json_header, binary_header, reader } =
+  const { json_header, binary_header, reader, meta_encrypted_error } =
     await parseSkvaBinaryHeaderStream(input);
 
   let fek: Uint8Array;
@@ -70,7 +70,7 @@ export async function skvaOpenDecryptStream(
     binary_header,
     // meta is copied from the header for convenience, next to the decrypted meta_encrypted.
     ...(json_header.meta !== undefined ? { meta: json_header.meta } : {}),
-    ...readMetaEncrypted(json_header, fek),
+    ...readMetaEncrypted(json_header, fek, meta_encrypted_error),
     async decrypt_payload(output) {
       skvaAssert(
         payload_promise === undefined && !released,
@@ -125,10 +125,15 @@ async function resolveFek(
 }
 
 // meta_encrypted is optional, so a failure to decrypt it is reported instead of stopping payload decryption.
+// A malformed meta_encrypted is already dropped while parsing, which returns the reason as parse_error.
 function readMetaEncrypted(
   json_header: SkvaJsonHeader,
   fek: Uint8Array,
+  parse_error: SkvaError | undefined,
 ): Pick<SkvaDecryptStream, "meta_encrypted" | "meta_encrypted_error"> {
+  if (parse_error !== undefined) {
+    return { meta_encrypted_error: parse_error };
+  }
   if (json_header.meta_encrypted === undefined) {
     return {};
   }

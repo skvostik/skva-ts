@@ -205,6 +205,8 @@ interface SkvaMetaEncryptedHeader {
 }
 ```
 
+A malformed `meta` or `meta_encrypted` is left unset when the header is parsed, so it never blocks payload decryption. Decryption reports why `meta_encrypted` was dropped as `meta_encrypted_error`.
+
 ### SkvaBinaryHeader
 
 The binary prefix and length information parsed from the SKVA stream:

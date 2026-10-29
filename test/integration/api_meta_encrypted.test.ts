@@ -110,4 +110,52 @@ describe("integration/api/meta_encrypted", { timeout: 30_000 }, () => {
     expect(decrypted.meta_encrypted_error).toBeInstanceOf(SkvaError);
     expect(decrypted.meta_encrypted_error!.code).toBe("ERR_AEAD_AUTH_FAILED");
   }, RECIPIENT_TEST_TIMEOUT_MS);
+
+  it("still decrypts the payload when meta and meta_encrypted are malformed", async () => {
+    const recipient = await skvaGenerateRecipient(
+      "api-pass-malformed",
+      "api-r-malformed",
+      CHEAP_KDF,
+    );
+    const encrypted = await skvaEncryptBytes(FIXED_PLAINTEXT, {
+      recipients: [recipient],
+      meta: { created_at: "2026-07-27T12:00:00Z" },
+      meta_encrypted: { original_filename: SECRET_FILENAME },
+    });
+
+    const header = JSON.parse(
+      new TextDecoder().decode(encrypted.binary_header.header_bytes),
+    );
+    header.meta = "not an object";
+    header.meta_encrypted = { algorithm: "chacha20poly1305" };
+    const malformed_bytes = replaceJsonHeader(encrypted.bytes, header);
+
+    const decrypted = await skvaDecryptBytes(malformed_bytes, {
+      password: "api-pass-malformed",
+    });
+
+    expect(decrypted.bytes).toEqual(FIXED_PLAINTEXT);
+    expect("meta" in decrypted).toBe(false);
+    expect("meta" in decrypted.json_header).toBe(false);
+    expect("meta_encrypted" in decrypted).toBe(false);
+    expect("meta_encrypted" in decrypted.json_header).toBe(false);
+    expect(decrypted.meta_encrypted_error!.code).toBe("ERR_HEADER_SCHEMA_INVALID");
+  }, RECIPIENT_TEST_TIMEOUT_MS);
 });
+
+// Rebuilds an SKVA file with a different JSON header, keeping the rest of the file.
+function replaceJsonHeader(skva_bytes: Uint8Array, header: unknown): Uint8Array {
+  const old_header_length = new DataView(
+    skva_bytes.buffer,
+    skva_bytes.byteOffset,
+  ).getUint32(5);
+  const header_bytes = new TextEncoder().encode(JSON.stringify(header));
+  const rest = skva_bytes.slice(9 + old_header_length);
+
+  const out = new Uint8Array(9 + header_bytes.length + rest.length);
+  out.set(skva_bytes.slice(0, 5));
+  new DataView(out.buffer).setUint32(5, header_bytes.length);
+  out.set(header_bytes, 9);
+  out.set(rest, 9 + header_bytes.length);
+  return out;
+}

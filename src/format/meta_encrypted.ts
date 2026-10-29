@@ -9,12 +9,11 @@ import {
   SKVA_META_ENCRYPTED_KEY_DERIVATION_NAME,
   SKVA_META_ENCRYPTED_PADDING_BYTES,
   SKVA_NONCE_BYTES,
-  SKVA_TAG_BYTES,
 } from "../constants.js";
 import { SkvaError, skvaAssert } from "../errors.js";
 import type { SkvaMetaEncryptedHeader } from "../types.js";
 import { decodeBase64, encodeBase64 } from "../utils/base64.js";
-import { isRecord } from "./json_header.js";
+import { isRecord, validateMetaEncryptedHeader } from "./json_header.js";
 
 /**
  * Encrypts a metadata object into a `meta_encrypted` header object.
@@ -71,34 +70,10 @@ export function decryptMetaEncrypted(
   meta_encrypted: unknown,
   fek: Uint8Array,
 ): Record<string, unknown> {
-  skvaAssert(
-    isRecord(meta_encrypted),
-    "ERR_HEADER_SCHEMA_INVALID",
-    "meta_encrypted must be an object.",
-  );
-  skvaAssert(
-    meta_encrypted.algorithm === SKVA_CIPHER_NAME,
-    "ERR_HEADER_SCHEMA_INVALID",
-    "meta_encrypted.algorithm must be 'chacha20poly1305'.",
-  );
-  skvaAssert(
-    meta_encrypted.key_derivation === SKVA_META_ENCRYPTED_KEY_DERIVATION_NAME,
-    "ERR_HEADER_SCHEMA_INVALID",
-    "meta_encrypted.key_derivation must be 'hkdf_sha256'.",
-  );
-  skvaAssert(
-    typeof meta_encrypted.ciphertext_b64 === "string",
-    "ERR_HEADER_SCHEMA_INVALID",
-    "meta_encrypted.ciphertext_b64 must be a string.",
-  );
+  validateMetaEncryptedHeader(meta_encrypted);
   const ciphertext = decodeBase64(
     meta_encrypted.ciphertext_b64,
     "meta_encrypted.ciphertext_b64",
-  );
-  skvaAssert(
-    ciphertext.length > SKVA_TAG_BYTES,
-    "ERR_HEADER_SCHEMA_INVALID",
-    "meta_encrypted.ciphertext_b64 must contain ciphertext and tag.",
   );
 
   const key = deriveMetaEncryptedKey(fek);

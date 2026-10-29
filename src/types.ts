@@ -67,7 +67,14 @@ export interface SkvaJsonHeader {
   recovery_note?: unknown;
   recipients: SkvaRecipientFekWrapper[];
   payload: SkvaPayloadHeader;
+  /**
+   * Left unset when parsing a header whose `meta` is not an object.
+   */
   meta?: Record<string, unknown>;
+  /**
+   * Left unset when parsing a header whose `meta_encrypted` is malformed; decryption reports the reason as
+   * `meta_encrypted_error`.
+   */
   meta_encrypted?: SkvaMetaEncryptedHeader;
 }
 
