@@ -19,12 +19,15 @@ The format supports one or more recipients. Each recipient has a password-derive
     - [5.5 `fek` Object](#55-fek-object)
     - [5.6 `payload` Object](#56-payload-object)
     - [5.7 Optional Fields](#57-optional-fields)
+    - [5.8 `meta_encrypted` Object](#58-meta_encrypted-object)
+    - [5.9 Unrecognized Fields](#59-unrecognized-fields)
   - [6. Chunk and Payload Rules](#6-chunk-and-payload-rules)
   - [7. Encrypt Flow](#7-encrypt-flow)
   - [8. Decrypt Flow](#8-decrypt-flow)
   - [9. Security Considerations](#9-security-considerations)
     - [9.1 Tamper Verification](#91-tamper-verification)
     - [9.2 Password Recommendation](#92-password-recommendation)
+    - [9.3 Encrypted Metadata](#93-encrypted-metadata)
 
 
 ## 1. Cryptographic Profile
@@ -33,7 +36,8 @@ SKVA v1 uses:
 
 - `argon2id` for password-based key derivation
 - `ml_kem1024_p384` for per-recipient shared-secret encapsulation
-- `chacha20poly1305` for FEK wrapping and authenticated chunk encryption
+- `chacha20poly1305` for FEK wrapping, authenticated chunk encryption, and optional encrypted metadata
+- `hkdf_sha256` for deriving the encrypted-metadata key from the FEK
 
 Recipient public keys are used for encryption and may be stored in the file or supplied externally. Recipient passwords are used for decryption and initial recipient key setup, not for direct payload encryption.
 
@@ -45,7 +49,7 @@ Designed for:
 
 - one encrypted backup payload per `.skva` file with one or more recipients
 - sequential streaming encrypt/decrypt
-- deterministic decoding rules and strict validation
+- deterministic decoding rules and strict validation of defined fields
 - asymmetric encryption where recipient public keys are available at backup time and recipient passwords are used only for recovery and initial setup
 
 Not designed for:
@@ -91,7 +95,9 @@ Header is a UTF-8 JSON object.
     "algorithm": "Basic file format: magic + version + header length + UTF-8 JSON header + header extension length + header extension bytes + encrypted chunks. For each recipient entry: run Argon2id with recorded parameters and that entry's password to recover the deterministic ML-KEM private seed, derive the recipient private key, use ML-KEM decapsulation to recover a shared secret, unwrap FEK with chacha20poly1305 using that shared secret, then decrypt chunks sequentially.",
     "chunk_nonce_format": "uint88_be(chunk_index) || eof_flag_u8",
     "chunk_encrypted": "chacha20poly1305(FEK, nonce_i, aad=empty).encrypt(plaintext_chunk)",
-    "fek_encrypted": "chacha20poly1305(kem.shared_secret, fek_nonce, aad=empty).encrypt(FEK)"
+    "fek_encrypted": "chacha20poly1305(kem.shared_secret, fek_nonce, aad=empty).encrypt(FEK)",
+    "meta_encrypted_key": "hkdf_sha256(ikm=FEK, salt=empty, info=utf8('meta_encrypted'), length=32)",
+    "meta_encrypted": "chacha20poly1305(meta_encrypted_key, nonce=zero, aad=empty).encrypt(UTF-8 JSON)"
   },
   "recipients": [
     {
@@ -144,9 +150,13 @@ Header is a UTF-8 JSON object.
     "plaintext_chunk_bytes": 65536
   },
   "meta": {
-    "original_filename": "data-archive.zip",
     "original_size_bytes": 734003200,
     "created_at": "2026-07-27T12:00:00Z"
+  },
+  "meta_encrypted": {
+    "algorithm": "chacha20poly1305",
+    "key_derivation": "hkdf_sha256",
+    "ciphertext_b64": "BASE64_ENCRYPTED_META_JSON"
   }
 }
 ```
@@ -225,13 +235,37 @@ The full 12-byte nonce for each chunk is constructed as:
 
 ### 5.7 Optional Fields
 
-- `meta`: small non-sensitive metadata object
+- `meta`: small non-sensitive metadata object, stored in plaintext
+- `meta_encrypted`: encrypted metadata object, see [5.8](#58-meta_encrypted-object)
 
-Recommended `meta` fields:
+Optional fields are not needed to decrypt the payload, and decoders may ignore them. If an optional field is encrypted, `recovery_note` should describe how to decrypt it.
+
+Recommended metadata fields, usable in either object:
 
 - `original_filename`: original filename before encryption
 - `original_size_bytes`: original plaintext file size in bytes
 - `created_at`: creation timestamp
+
+### 5.8 `meta_encrypted` Object
+
+- `algorithm`: string, must be `"chacha20poly1305"`
+- `key_derivation`: string, must be `"hkdf_sha256"`
+- `ciphertext_b64`: base64 ciphertext + 16-byte tag
+
+```
+meta_encrypted_key = HKDF-SHA256(ikm = FEK, salt = empty, info = utf8("meta_encrypted"), length = 32)
+ciphertext         = chacha20poly1305(meta_encrypted_key, nonce = zero, aad = empty).encrypt(plaintext)
+```
+
+The plaintext is a UTF-8 JSON object. Encoders may pad it with trailing spaces, for example to a multiple of 64 bytes, to hide its exact length.
+
+Because the nonce is zero, encoders must encrypt `meta_encrypted` only once per FEK.
+
+### 5.9 Unrecognized Fields
+
+Decoders must ignore unrecognized fields in the header JSON object and in nested objects, and must not treat their presence as a validation error.
+
+Encoders must not place decryption-relevant data in unrecognized fields. Any data required to decrypt the payload must be in fields defined by this specification, so that a decoder which ignores unrecognized fields can still decrypt the payload.
 
 
 ## 6. Chunk and Payload Rules
@@ -283,6 +317,7 @@ Inputs:
 - `plaintext_chunk_bytes`
    - recipient `ml_kem1024_p384` public key originally derived using the KDF descriptor parameters
 - optional metadata
+- optional encrypted metadata
 
 Steps:
 
@@ -292,10 +327,11 @@ Steps:
     - store the resulting KEM ciphertext in `recipient.kem.ciphertext_b64`
     - generate a random FEK-wrap nonce (`12` bytes) into `recipient.fek.nonce_b64`
     - wrap FEK as `recipient.fek.encrypted_fek_b64 = chacha20poly1305(kem.shared_secret, recipient.fek.nonce_b64).encrypt(FEK)`
-3. Build and write wire prefix + header JSON.
-4. Write `header_extension_length` and optional `header_extension` bytes. When no extension data is present, `header_extension_length = 0` and no `header_extension` bytes follow.
-5. Stream plaintext in chunks of up to `plaintext_chunk_bytes` plaintext bytes.
-6. For each chunk `i`, build `P_i = plaintext_chunk`, derive `nonce_i` with the EOF marker set only on the final chunk, encrypt with `chacha20poly1305` using empty AAD, and write `ciphertext || 16-byte tag`.
+3. If encrypted metadata is provided, build `meta_encrypted` as defined in [5.8](#58-meta_encrypted-object).
+4. Build and write wire prefix + header JSON.
+5. Write `header_extension_length` and optional `header_extension` bytes. When no extension data is present, `header_extension_length = 0` and no `header_extension` bytes follow.
+6. Stream plaintext in chunks of up to `plaintext_chunk_bytes` plaintext bytes.
+7. For each chunk `i`, build `P_i = plaintext_chunk`, derive `nonce_i` with the EOF marker set only on the final chunk, encrypt with `chacha20poly1305` using empty AAD, and write `ciphertext || 16-byte tag`.
 
 ## 8. Decrypt Flow
 
@@ -316,10 +352,11 @@ Steps:
     - decapsulate `recipient.kem.ciphertext_b64` to recover the per-recipient shared secret
     - unwrap FEK from `recipient.fek.encrypted_fek_b64` using `recipient.fek.nonce_b64` and empty AAD
 5. If no recipient entry yields a valid FEK, reject.
-6. Iterate chunk index `i` from `0` upward until physical EOF.
-7. For each non-final chunk, read fixed encrypted length `plaintext_chunk_bytes + 16`, derive `nonce_i` with the EOF marker cleared, decrypt with `chacha20poly1305` using empty AAD, and write plaintext chunk data.
-8. Treat the EOF remainder as the final chunk candidate, decrypt it with the EOF marker set, and require successful authentication.
-9. Close output stream.
+6. Optionally decrypt `meta_encrypted` as defined in [5.8](#58-meta_encrypted-object).
+7. Iterate chunk index `i` from `0` upward until physical EOF.
+8. For each non-final chunk, read fixed encrypted length `plaintext_chunk_bytes + 16`, derive `nonce_i` with the EOF marker cleared, decrypt with `chacha20poly1305` using empty AAD, and write plaintext chunk data.
+9. Treat the EOF remainder as the final chunk candidate, decrypt it with the EOF marker set, and require successful authentication.
+10. Close output stream.
 
 ## 9. Security Considerations
 
@@ -339,3 +376,11 @@ The header stores only decoding metadata and must never contain plaintext secret
 ### 9.2 Password Recommendation
 
 Recommended baseline per recipient password: Diceware passphrase with at least 6 words.
+
+### 9.3 Encrypted Metadata
+
+`meta_encrypted_key` is derived from the FEK with HKDF rather than being the FEK itself, so the two behave as unrelated keys. The zero nonce of `meta_encrypted` therefore cannot collide with payload chunk nonces, which reuse the same fixed values in every file.
+
+The Poly1305 tag detects tampering with `ciphertext_b64`, and copying `meta_encrypted` from another file, which has a different FEK. Removing `meta_encrypted` entirely is not detected, because the header is not authenticated.
+
+Plaintext `meta` is readable by anyone who has the file.
